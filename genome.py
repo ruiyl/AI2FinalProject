@@ -3,14 +3,13 @@ from network import Network
 import random
 
 
-class Genome(object):
-    networkArchitecture = [2, 3, 1]
+class Genome():
     fitness = 0
     mutationMinimizer = 1
 
     def __init__(self, network=0):
         if network == 0:
-            self.network = Network(self.networkArchitecture)
+            self.network = Network(Config.networkArchitecture)
         else:
             self.network = network
 

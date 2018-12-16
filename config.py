@@ -2,14 +2,14 @@ class Config(object):
     #If Debug is true, show various info on the game screen
     debug = False
     #The architecture of the ANN, please do not change first and last element of the array
-    networkArchitecture = [2,3,1]
+    networkArchitecture = [2,6,1]
     #Number of Birds in a generation
     numberOfIndividuals = 10
     #Maximum generation before exiting the Genetic Algorithm
     maxGeneration = 2000
     #If fitnessIsScore is True, the fitness of an individual will be the score (pipe passed succesfully).
     #If it's false, the fitness will be the number of frame survived
-    fitnessIsScore = True
+    fitnessIsScore = False
     #If Elitism is True, the best individuals will be kept in the next generation. False is a bad idea
     elitism = True
     #The number of completly new individuals per generation, their genome
@@ -20,7 +20,7 @@ class Config(object):
     #If mutateNewBorn is True, the new genomes will be mutated right after being breaded
     mutateNewBorn = True
     #The rate of mutation when we evolve the population
-    mutationRate = 0.015
+    mutationRate = 0.020
     #The selection process (rouletteWheelSelection or tournamentSelection)
     selectionMethod = "rouletteWheelSelection"
     #If you chose tournamentSelection, the size of the tournament

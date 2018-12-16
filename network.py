@@ -108,7 +108,7 @@ class Network():
         dir = os.path.dirname(filename)
         if not os.path.exists(dir):
             os.makedirs(dir)
-        with open(filename, "wb") as f:
+        with open(filename, "w", encoding="utf8") as f:
             json.dump(data, f)
 
 #### Loading a Network

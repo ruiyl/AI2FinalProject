@@ -91,75 +91,6 @@ class Population(object):
 
         self.genomes = genomes
 
-    def oldEvolvePopulationv2(self):
-        genomes = []
-        elite = self.findFittest(Config.numberofEliteWeKeep)
-        #printc("Fittest : %s" % self.findFittest().genes,"red")
-        #We keep n elite and we mutate them
-        if Config.mutateElite==True:
-            for genome in elite:
-                genome.mutate(Config.mutationRate)
-                genome.mutate(Config.mutationRate)
-        genomes.extend(elite)
-
-        #Fill the table with baby of elite
-        while len(genomes) < (Config.numberOfIndividuals - Config.numberofNewRandomGenomePerGeneration):
-            gen1 = randomGenome(elite)
-            gen2 = randomGenome(elite)
-            newIndiv = self.crossover(gen1,gen2)
-            newIndiv.mutate(Config.mutationRate)
-            newIndiv.mutate(Config.mutationRate)
-            genomes.append(newIndiv)
-
-        #Random new genome
-        while len(genomes) < Config.numberOfIndividuals:
-            newIndiv = generateRandomGenome()
-            newIndiv.mutate(Config.mutationRate)
-            newIndiv.mutate(Config.mutationRate)
-            genomes.append(newIndiv)
-
-        self.genomes = genomes
-
-    def oldEvolvePopulationv3(self):
-        genomes = []
-        elite = self.findFittest(Config.numberofEliteWeKeep)
-        #printc("Fittest : %s" % self.findFittest().genes,"red")
-        #We keep n elite and we mutate them but slightlier than the other
-        for genome in elite:
-            genome.mutatev2("weights",Config.mutationRate / 2)
-            genome.mutatev2("biases",Config.mutationRate / 2)
-        genomes.extend(elite)
-        print('\n' * 5)
-        #Fill the table with baby of the elite
-        while len(genomes) < (Config.numberOfIndividuals - Config.numberofNewRandomGenomePerGeneration):
-            if Config.selectionMethod=="tournamentSelection":
-                if Config.FatherAlwaysElite==True:
-                    father = randomGenome(elite)
-                else:
-                    father = tournamentSelection(self)
-                mother = tournamentSelection(self)
-
-            if Config.selectionMethod=="rouletteWheelSelection":
-                if Config.FatherAlwaysElite==True:
-                    father = randomGenome(elite)
-                else:
-                    father = rouletteWheelSelection(self)
-                mother = rouletteWheelSelection(self)
-
-            newIndiv = self.crossover(father, mother)
-            newIndiv.mutatev2("weights",Config.mutationRate)
-            newIndiv.mutatev2("biases",Config.mutationRate)
-            #print "Genome added"
-            genomes.append(newIndiv)
-        #Random new genome
-        while len(genomes) < Config.numberOfIndividuals:
-            newIndiv = generateRandomGenome()
-            newIndiv.mutatev2("weights",Config.mutationRate)
-            newIndiv.mutatev2("biases",Config.mutationRate)
-            genomes.append(newIndiv)
-
-        self.genomes = genomes
-
     def crossover(self,genome1, genome2):
         #Once in a while genome2 is not set, pull request if you found why
         if type(genome2)==type(None):
@@ -175,7 +106,6 @@ class Population(object):
                     genome.setGene(i, genome2.getGene(i))
             return genome
 
-        #I know it's cryptic...
         if Config.crossoverVersion==2:
             genome = Genome()
             genes1 = genome1.genes
@@ -254,17 +184,13 @@ def rouletteWheelSelection(population):
             return genome
 
 def tournamentSelection(population):
-    #print "A new tournament has begun !!!"
     # Create a tournament population
     tournament = Population()
     # For each place in the tournament get a random individual
     for i in range(Config.tournamentSize):
         randomInt = random.randint(0,Config.numberOfIndividuals - 1)
-        #print "individual added to the tournament, number %s" % randomInt
-        #print('\n' * 3)
         tournament.addGenome(population.genomes[randomInt])
 
     # Get the fittest
     fittest = tournament.findFittest()
-    #"Winner : %s" % fittest.genes
     return fittest

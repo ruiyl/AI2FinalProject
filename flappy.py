@@ -80,16 +80,6 @@ PIPES_LIST = (
     'assets/sprites/pipe-red.png',
 )
 
-def printc(text,color):
-    if color == "red":
-         print(Fore.RED)
-    if color == "blue":
-         print(Fore.BLUE)
-    if color == "green":
-         print(Fore.GREEN)
-    print(text)
-    print(Style.RESET_ALL)
-
 def main():
     global SCREEN, FPSCLOCK
     pygame.init()
@@ -143,7 +133,6 @@ def main():
             updateScreen(informationforscreen)
             if genome.fitness > bestFitness:
                 bestFitness = genome.fitness
-                #TBD
                 genome.network.save(today + "/bestfitness.json")
             birdnmbr += 1
 
@@ -279,7 +268,7 @@ def gameLoop(movementInfo,genome):
         playerYcorrectAxis = float(SCREENHEIGHT - playery) / SCREENHEIGHT
         distanceBetweenPlayerAndNextPipe = float(nextPipe['x'] - playerx)/ SCREENWIDTH
 
-        NNinput = np.array([[playerYcorrectAxis],[nextPipeY]])
+        NNinput = np.array([[distanceBetweenPlayerAndNextPipe],[playerYcorrectAxis - nextPipeY]])
 
         NNoutput = genome.network.feedforward(NNinput)
 
@@ -567,15 +556,15 @@ def updateScreen(info):
 
     if info["generation"] > 1:
         print("----Last generation----")
-        printc("Average fitness: %s" % str(info["lastgenerationaveragefitness"]), "blue")
+        print("Average fitness: %s" % str(info["lastgenerationaveragefitness"]), "blue")
         print("-----------------------")
     if info["birdnumber"] > 1:
-        printc("Last Fitness: %s" % str(info["lastfitness"]), "green")
+        print("Last Fitness: %s" % str(info["lastfitness"]), "green")
 
-    printc("Best Fitness: %s" % str(info["bestfitness"]),"red")
+    print("Best Fitness: %s" % str(info["bestfitness"]),"red")
     print("----Status----")
-    printc("Generation number : %s/%s" % (str(info["generation"]),str(Config.maxGeneration)),"blue")
-    printc("Bird number: %s/%s" % (str(info["birdnumber"]), str(Config.numberOfIndividuals)),"blue")
+    print("Generation number : %s/%s" % (str(info["generation"]),str(Config.maxGeneration)),"blue")
+    print("Bird number: %s/%s" % (str(info["birdnumber"]), str(Config.numberOfIndividuals)),"blue")
 
 if __name__ == '__main__':
     main()
