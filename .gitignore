@@ -1,1 +1,6 @@
 *.pyc
+save/2018-12-16/bestfitness.dat
+save/2018-12-16/fitnessovergeneration.dat
+save/2018-12-16/fittestovergeneration.dat
+.vscode/.ropeproject/config.py
+.vscode/.ropeproject/objectdb

@@ -1,19 +1,49 @@
 from itertools import cycle
 import random
 import sys
+import time
+import datetime
+import logging
+import os
+import json
 
 import pygame
 from pygame.locals import *
 
+from genome import Genome
+from network import Network
+from population import Population
+from config import Config
 
-FPS = 30
+import pickle
+import numpy as np
+import subprocess
+
+from colorama import *
+
+today = "save/" + str(datetime.date.today())
+
+if not os.path.exists(today):
+    os.makedirs(today)
+
+savestat = True
+fpsspeed=0
+FPS = 60
+
+bestFitness = 0
+fitnessovergeneration = []
+fittestovergeneration = []
+
+detectionOffset = 40
+
 SCREENWIDTH  = 288
 SCREENHEIGHT = 512
 # amount by which base can maximum shift to left
 PIPEGAPSIZE  = 100 # gap between upper and lower part of pipe
 BASEY        = SCREENHEIGHT * 0.79
-# image, sound and hitmask  dicts
-IMAGES, SOUNDS, HITMASKS = {}, {}, {}
+# image and hitmask  dicts
+IMAGES, HITMASKS = {}, {}
+DIEIFTOUCHTOP = True
 
 # list of all possible players (tuple of 3 positions of flap)
 PLAYERS_LIST = (
@@ -50,12 +80,15 @@ PIPES_LIST = (
     'assets/sprites/pipe-red.png',
 )
 
-
-try:
-    range
-except NameError:
-    range = range
-
+def printc(text,color):
+    if color == "red":
+         print(Fore.RED)
+    if color == "blue":
+         print(Fore.BLUE)
+    if color == "green":
+         print(Fore.GREEN)
+    print(text)
+    print(Style.RESET_ALL)
 
 def main():
     global SCREEN, FPSCLOCK
@@ -85,111 +118,106 @@ def main():
     # base (ground) sprite
     IMAGES['base'] = pygame.image.load('assets/sprites/base.png').convert_alpha()
 
-    # sounds
-    if 'win' in sys.platform:
-        soundExt = '.wav'
-    else:
-        soundExt = '.ogg'
+    bestFitness = 0
+    population = Population()
+    population.generateRandomPopulation()
+    generation = 1
+    maxgeneration = Config.maxGeneration
 
-    SOUNDS['die']    = pygame.mixer.Sound('assets/audio/die' + soundExt)
-    SOUNDS['hit']    = pygame.mixer.Sound('assets/audio/hit' + soundExt)
-    SOUNDS['point']  = pygame.mixer.Sound('assets/audio/point' + soundExt)
-    SOUNDS['swoosh'] = pygame.mixer.Sound('assets/audio/swoosh' + soundExt)
-    SOUNDS['wing']   = pygame.mixer.Sound('assets/audio/wing' + soundExt)
+    lastgenerationaveragefitness = 0
 
-    while True:
-        # select random background sprites
-        randBg = random.randint(0, len(BACKGROUNDS_LIST) - 1)
-        IMAGES['background'] = pygame.image.load(BACKGROUNDS_LIST[randBg]).convert()
+    while generation <= maxgeneration :
+        birdnmbr = 1
 
-        # select random player sprites
-        randPlayer = random.randint(0, len(PLAYERS_LIST) - 1)
-        IMAGES['player'] = (
-            pygame.image.load(PLAYERS_LIST[randPlayer][0]).convert_alpha(),
-            pygame.image.load(PLAYERS_LIST[randPlayer][1]).convert_alpha(),
-            pygame.image.load(PLAYERS_LIST[randPlayer][2]).convert_alpha(),
-        )
+        for i in range(population.size()):
 
-        # select random pipe sprites
-        pipeindex = random.randint(0, len(PIPES_LIST) - 1)
-        IMAGES['pipe'] = (
-            pygame.transform.rotate(
-                pygame.image.load(PIPES_LIST[pipeindex]).convert_alpha(), 180),
-            pygame.image.load(PIPES_LIST[pipeindex]).convert_alpha(),
-        )
-
-        # hismask for pipes
-        HITMASKS['pipe'] = (
-            getHitmask(IMAGES['pipe'][0]),
-            getHitmask(IMAGES['pipe'][1]),
-        )
-
-        # hitmask for player
-        HITMASKS['player'] = (
-            getHitmask(IMAGES['player'][0]),
-            getHitmask(IMAGES['player'][1]),
-            getHitmask(IMAGES['player'][2]),
-        )
-
-        movementInfo = showWelcomeAnimation()
-        crashInfo = mainGame(movementInfo)
-        showGameOverScreen(crashInfo)
+            genome = startGame(population.getGenome(i))
+            population.setGenomeFitness(i,genome.fitness)
+            informationforscreen = {
+            'generation' : generation,
+            'birdnumber' : birdnmbr,
+            'lastfitness' : genome.fitness,
+            'lastgenerationaveragefitness' : lastgenerationaveragefitness,
+            'bestfitness' : bestFitness
+            }
+            updateScreen(informationforscreen)
+            if genome.fitness > bestFitness:
+                bestFitness = genome.fitness
+                #TBD
+                genome.network.save(today + "/bestfitness.json")
+            birdnmbr += 1
 
 
-def showWelcomeAnimation():
-    """Shows welcome screen animation of flappy bird"""
-    # index of player to blit on screen
-    playerIndex = 0
-    playerIndexGen = cycle([0, 1, 2, 1])
-    # iterator used to change playerIndex after every 5th iteration
-    loopIter = 0
+        global fitnessovergeneration
+        fitnessovergeneration.append(population.averageFitness())
 
-    playerx = int(SCREENWIDTH * 0.2)
+        lastgenerationaveragefitness = population.averageFitness()
+
+        global fittestovergeneration
+        fittestovergeneration.append(population.findFittest().fitness)
+        #Evolve the population
+        population.evolvePopulation()
+        generation += 1
+
+def startGame(genome):
+
+    # select random background sprites
+    randBg = random.randint(0, len(BACKGROUNDS_LIST) - 1)
+    IMAGES['background'] = pygame.image.load(BACKGROUNDS_LIST[randBg]).convert()
+
+    # select random player sprites
+    randPlayer = random.randint(0, len(PLAYERS_LIST) - 1)
+    IMAGES['player'] = (
+        pygame.image.load(PLAYERS_LIST[randPlayer][0]).convert_alpha(),
+        pygame.image.load(PLAYERS_LIST[randPlayer][1]).convert_alpha(),
+        pygame.image.load(PLAYERS_LIST[randPlayer][2]).convert_alpha(),
+    )
+
+    # select random pipe sprites
+    pipeindex = random.randint(0, len(PIPES_LIST) - 1)
+    IMAGES['pipe'] = (
+        pygame.transform.rotate(
+            pygame.image.load(PIPES_LIST[pipeindex]).convert_alpha(), 180),
+        pygame.image.load(PIPES_LIST[pipeindex]).convert_alpha(),
+    )
+
+    # hismask for pipes
+    HITMASKS['pipe'] = (
+        getHitmask(IMAGES['pipe'][0]),
+        getHitmask(IMAGES['pipe'][1]),
+    )
+
+    # hitmask for player
+    HITMASKS['player'] = (
+        getHitmask(IMAGES['player'][0]),
+        getHitmask(IMAGES['player'][1]),
+        getHitmask(IMAGES['player'][2]),
+    )
+
     playery = int((SCREENHEIGHT - IMAGES['player'][0].get_height()) / 2)
-
-    messagex = int((SCREENWIDTH - IMAGES['message'].get_width()) / 2)
-    messagey = int(SCREENHEIGHT * 0.12)
-
-    basex = 0
-    # amount by which base can maximum shift to left
-    baseShift = IMAGES['base'].get_width() - IMAGES['background'].get_width()
-
-    # player shm for up-down motion on welcome screen
     playerShmVals = {'val': 0, 'dir': 1}
+    basex = 0
+    playerIndexGen = cycle([0, 1, 2, 1])
+    movementInfo = {
+        'playery': playery + playerShmVals['val'],
+        'basex': basex,
+        'playerIndexGen': playerIndexGen,
+    }
+    #Update the network with current genes
+    genome.network.fromgenes(genome.genes)
+    crashInfo = gameLoop(movementInfo,genome)
+    genome = crashInfo['genome']
 
-    while True:
-        for event in pygame.event.get():
-            if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
-                pygame.quit()
-                sys.exit()
-            if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
-                # make first flap sound and return values for mainGame
-                SOUNDS['wing'].play()
-                return {
-                    'playery': playery + playerShmVals['val'],
-                    'basex': basex,
-                    'playerIndexGen': playerIndexGen,
-                }
+    if Config.fitnessIsScore:
+        genome.fitness = crashInfo['score']
 
-        # adjust playery, playerIndex, basex
-        if (loopIter + 1) % 5 == 0:
-            playerIndex = next(playerIndexGen)
-        loopIter = (loopIter + 1) % 30
-        basex = -((-basex + 4) % baseShift)
-        playerShm(playerShmVals)
+    if genome.fitness < 0:
+        genome.fitness = 0
 
-        # draw sprites
-        SCREEN.blit(IMAGES['background'], (0,0))
-        SCREEN.blit(IMAGES['player'][playerIndex],
-                    (playerx, playery + playerShmVals['val']))
-        SCREEN.blit(IMAGES['message'], (messagex, messagey))
-        SCREEN.blit(IMAGES['base'], (basex, BASEY))
+    return genome
 
-        pygame.display.update()
-        FPSCLOCK.tick(FPS)
-
-
-def mainGame(movementInfo):
+def gameLoop(movementInfo,genome):
+    global fpsspeed
     score = playerIndex = loopIter = 0
     playerIndexGen = movementInfo['playerIndexGen']
     playerx, playery = int(SCREENWIDTH * 0.2), movementInfo['playery']
@@ -220,37 +248,57 @@ def mainGame(movementInfo):
     playerMaxVelY =  10   # max vel along Y, max descend speed
     playerMinVelY =  -8   # min vel along Y, max ascend speed
     playerAccY    =   1   # players downward accleration
-    playerRot     =  45   # player's rotation
-    playerVelRot  =   3   # angular speed
-    playerRotThr  =  20   # rotation threshold
     playerFlapAcc =  -9   # players speed on flapping
     playerFlapped = False # True when player flaps
 
+    framesurvived = 0
 
     while True:
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
+                #Store Stat
+                if savestat==True:
+                    reportStat()
+
                 pygame.quit()
                 sys.exit()
-            if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
-                if playery > -2 * IMAGES['player'][0].get_height():
-                    playerVelY = playerFlapAcc
-                    playerFlapped = True
-                    SOUNDS['wing'].play()
+            if event.type == KEYDOWN and event.key == K_UP:
+                if fpsspeed < 4:
+                    fpsspeed += 1
+            if event.type == KEYDOWN and event.key == K_DOWN:
+                if fpsspeed != -2:
+                    fpsspeed -= 1
+        #Evaluate the NN
+        if playerx < lowerPipes[0]['x'] + detectionOffset:
+            nextPipe = lowerPipes[0]
+        else:
+            nextPipe = lowerPipes[1]
+
+        nextPipeY = float(SCREENHEIGHT - nextPipe['y']) / SCREENHEIGHT
+
+        playerYcorrectAxis = float(SCREENHEIGHT - playery) / SCREENHEIGHT
+        distanceBetweenPlayerAndNextPipe = float(nextPipe['x'] - playerx)/ SCREENWIDTH
+
+        NNinput = np.array([[playerYcorrectAxis],[nextPipeY]])
+
+        NNoutput = genome.network.feedforward(NNinput)
+
+        if NNoutput > 0.5:
+            if playery > -2 * IMAGES['player'][0].get_height():
+                playerVelY = playerFlapAcc
+                playerFlapped = True
+
+        info = {'playery': playerYcorrectAxis, 'pipey': nextPipeY, 'distance': distanceBetweenPlayerAndNextPipe}
+
 
         # check for crash here
         crashTest = checkCrash({'x': playerx, 'y': playery, 'index': playerIndex},
                                upperPipes, lowerPipes)
-        if crashTest[0]:
+        if crashTest[0] or playery < 5:
+            genome.fitness = framesurvived
             return {
-                'y': playery,
-                'groundCrash': crashTest[1],
-                'basex': basex,
-                'upperPipes': upperPipes,
-                'lowerPipes': lowerPipes,
                 'score': score,
-                'playerVelY': playerVelY,
-                'playerRot': playerRot
+                'genome': genome
             }
 
         # check for score
@@ -259,7 +307,6 @@ def mainGame(movementInfo):
             pipeMidPos = pipe['x'] + IMAGES['pipe'][0].get_width() / 2
             if pipeMidPos <= playerMidPos < pipeMidPos + 4:
                 score += 1
-                SOUNDS['point'].play()
 
         # playerIndex basex change
         if (loopIter + 1) % 3 == 0:
@@ -267,21 +314,14 @@ def mainGame(movementInfo):
         loopIter = (loopIter + 1) % 30
         basex = -((-basex + 100) % baseShift)
 
-        # rotate the player
-        if playerRot > -90:
-            playerRot -= playerVelRot
-
         # player's movement
         if playerVelY < playerMaxVelY and not playerFlapped:
             playerVelY += playerAccY
         if playerFlapped:
             playerFlapped = False
-
-            # more rotation to cover the threshold (calculated in visible rotation)
-            playerRot = 45
-
         playerHeight = IMAGES['player'][playerIndex].get_height()
-        playery += min(playerVelY, BASEY - playery - playerHeight)
+        if playery > 5:
+            playery += min(playerVelY, BASEY - playery - playerHeight)
 
         # move pipes to left
         for uPipe, lPipe in zip(upperPipes, lowerPipes):
@@ -309,38 +349,53 @@ def mainGame(movementInfo):
         SCREEN.blit(IMAGES['base'], (basex, BASEY))
         # print score so player overlaps the score
         showScore(score)
+        if Config.debug:
+            displayInfo(info)
 
-        # Player rotation has a threshold
-        visibleRot = playerRotThr
-        if playerRot <= playerRotThr:
-            visibleRot = playerRot
-        
-        playerSurface = pygame.transform.rotate(IMAGES['player'][playerIndex], visibleRot)
-        SCREEN.blit(playerSurface, (playerx, playery))
+        framesurvived += 1
+        SCREEN.blit(IMAGES['player'][playerIndex], (playerx, playery))
+
+
+        global FPS
+        if fpsspeed==4:
+            #No FPS clock ticking, may be instable
+            continue
+        if fpsspeed==3:
+            FPS=4000
+        if fpsspeed==2:
+            FPS=400
+        if fpsspeed==1:
+            FPS=40
+        if fpsspeed==0:
+            FPS=30
+        if fpsspeed==-1:
+            FPS=15
+        if fpsspeed==-2:
+            FPS=3
 
         pygame.display.update()
         FPSCLOCK.tick(FPS)
 
+def showWelcomeAnimation():
+    """Shows welcome screen animation of flappy bird"""
+    # index of player to blit on screen
+    playerIndex = 0
+    playerIndexGen = cycle([0, 1, 2, 1])
+    # iterator used to change playerIndex after every 5th iteration
+    loopIter = 0
 
-def showGameOverScreen(crashInfo):
-    """crashes the player down ans shows gameover image"""
-    score = crashInfo['score']
-    playerx = SCREENWIDTH * 0.2
-    playery = crashInfo['y']
-    playerHeight = IMAGES['player'][0].get_height()
-    playerVelY = crashInfo['playerVelY']
-    playerAccY = 2
-    playerRot = crashInfo['playerRot']
-    playerVelRot = 7
+    playerx = int(SCREENWIDTH * 0.2)
+    playery = int((SCREENHEIGHT - IMAGES['player'][0].get_height()) / 2)
 
-    basex = crashInfo['basex']
+    messagex = int((SCREENWIDTH - IMAGES['message'].get_width()) / 2)
+    messagey = int(SCREENHEIGHT * 0.12)
 
-    upperPipes, lowerPipes = crashInfo['upperPipes'], crashInfo['lowerPipes']
+    basex = 0
+    # amount by which base can maximum shift to left
+    baseShift = IMAGES['base'].get_width() - IMAGES['background'].get_width()
 
-    # play hit and die sounds
-    SOUNDS['hit'].play()
-    if not crashInfo['groundCrash']:
-        SOUNDS['die'].play()
+    # player shm for up-down motion on welcome screen
+    playerShmVals = {'val': 0, 'dir': 1}
 
     while True:
         for event in pygame.event.get():
@@ -348,38 +403,28 @@ def showGameOverScreen(crashInfo):
                 pygame.quit()
                 sys.exit()
             if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
-                if playery + playerHeight >= BASEY - 1:
-                    return
+                return {
+                    'playery': playery + playerShmVals['val'],
+                    'basex': basex,
+                    'playerIndexGen': playerIndexGen,
+                }
 
-        # player y shift
-        if playery + playerHeight < BASEY - 1:
-            playery += min(playerVelY, BASEY - playery - playerHeight)
-
-        # player velocity change
-        if playerVelY < 15:
-            playerVelY += playerAccY
-
-        # rotate only when it's a pipe crash
-        if not crashInfo['groundCrash']:
-            if playerRot > -90:
-                playerRot -= playerVelRot
+        # adjust playery, playerIndex, basex
+        if (loopIter + 1) % 5 == 0:
+            playerIndex = next(playerIndexGen)
+        loopIter = (loopIter + 1) % 30
+        basex = -((-basex + 4) % baseShift)
+        playerShm(playerShmVals)
 
         # draw sprites
         SCREEN.blit(IMAGES['background'], (0,0))
-
-        for uPipe, lPipe in zip(upperPipes, lowerPipes):
-            SCREEN.blit(IMAGES['pipe'][0], (uPipe['x'], uPipe['y']))
-            SCREEN.blit(IMAGES['pipe'][1], (lPipe['x'], lPipe['y']))
-
+        SCREEN.blit(IMAGES['player'][playerIndex],
+                    (playerx, playery + playerShmVals['val']))
+        SCREEN.blit(IMAGES['message'], (messagex, messagey))
         SCREEN.blit(IMAGES['base'], (basex, BASEY))
-        showScore(score)
 
-        playerSurface = pygame.transform.rotate(IMAGES['player'][1], playerRot)
-        SCREEN.blit(playerSurface, (playerx,playery))
-
-        FPSCLOCK.tick(FPS)
         pygame.display.update()
-
+        FPSCLOCK.tick(FPS)
 
 def playerShm(playerShm):
     """oscillates the value of playerShm['val'] between 8 and -8"""
@@ -405,6 +450,21 @@ def getRandomPipe():
         {'x': pipeX, 'y': gapY + PIPEGAPSIZE}, # lower pipe
     ]
 
+def displayInfo(info):
+    ###Display useful info : the input for the ANN
+    myfont = pygame.font.Font(None, 30)
+    # render text
+    playery = str(info['playery'])
+    tubey = str(info['pipey'])
+    distance = str(info['distance'])
+
+    labelplayery = myfont.render(playery,1,(255,255,0))
+    labeltubey = myfont.render(tubey,1,(0,255,255))
+    labeldistance = myfont.render(distance,1,(255,255,255))
+
+    SCREEN.blit(labelplayery, (SCREENWIDTH / 2 - 100, SCREENHEIGHT * 0.7))
+    SCREEN.blit(labeltubey, (SCREENWIDTH / 2  - 100, SCREENHEIGHT * 0.8))
+    SCREEN.blit(labeldistance, (SCREENWIDTH / 2 - 100, SCREENHEIGHT * 0.9))
 
 def showScore(score):
     """displays score in center of screen"""
@@ -480,6 +540,42 @@ def getHitmask(image):
         for y in range(image.get_height()):
             mask[x].append(bool(image.get_at((x,y))[3]))
     return mask
+
+def load(filename):
+    """Load a neural network from the file ``filename``.  Returns an
+    instance of Network.
+    """
+    f = open(filename, "r")
+    data = json.load(f)
+    f.close()
+    net = Network(data["sizes"])
+    net.weights = [np.array(w) for w in data["weights"]]
+    net.biases = [np.array(b) for b in data["biases"]]
+    return net
+
+def reportStat():
+    with open(today + '/fitnessovergeneration.dat', 'wb') as handle:
+        pickle.dump(fitnessovergeneration, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(today + '/fittestovergeneration.dat', 'wb') as handle:
+        pickle.dump(fittestovergeneration, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(today + '/bestfitness.dat', 'wb') as handle:
+        pickle.dump(bestFitness, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+def updateScreen(info):
+    #Clear the screen
+    #subprocess.run(["printf", "\033c"])
+
+    if info["generation"] > 1:
+        print("----Last generation----")
+        printc("Average fitness: %s" % str(info["lastgenerationaveragefitness"]), "blue")
+        print("-----------------------")
+    if info["birdnumber"] > 1:
+        printc("Last Fitness: %s" % str(info["lastfitness"]), "green")
+
+    printc("Best Fitness: %s" % str(info["bestfitness"]),"red")
+    print("----Status----")
+    printc("Generation number : %s/%s" % (str(info["generation"]),str(Config.maxGeneration)),"blue")
+    printc("Bird number: %s/%s" % (str(info["birdnumber"]), str(Config.numberOfIndividuals)),"blue")
 
 if __name__ == '__main__':
     main()
