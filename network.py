@@ -108,7 +108,7 @@ class Network():
         dir = os.path.dirname(filename)
         if not os.path.exists(dir):
             os.makedirs(dir)
-        with open(filename, "wb") as f
+        with open(filename, "wb") as f:
             json.dump(data, f)
 
 #### Loading a Network
@@ -116,9 +116,9 @@ def load(filename):
     """Load a neural network from the file ``filename``.  Returns an
     instance of Network.
     """
-    with open(filename, "r") as f
+    with open(filename, "r") as f:
         data = json.load(f)
-        
+
     net = Network(data["sizes"])
     net.weights = [np.array(w) for w in data["weights"]]
     net.biases = [np.array(b) for b in data["biases"]]
